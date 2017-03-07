@@ -1,11 +1,20 @@
 #import tensorflow as tf
 import csv
 import random
+import math
 
+def xavier(x):
+    return math.sqrt(2.0/x)
 
+######
+#FLAGS
+# 1 - Random Batches
+# 2 - Cross Validation
+VALIDATION_METHOD = 2
+#####################
+
+###############
 #Preparing Data
-########################
-
 #Data sets
 class_names = ["car", "glass", "shots", "thunder"]
 dataset_dir = "../../dataset/"
@@ -17,6 +26,7 @@ for n in class_names:
     
 content = []
 label = []
+class_count = [0 for i in class_names]
 for i, f in enumerate(files):
     file = open(f)
     reader = csv.reader(file)
@@ -24,67 +34,154 @@ for i, f in enumerate(files):
         line.pop()
         content.append(line)
         label.append(i)
+        class_count[i] += 1
 print("Data processed!")
+########################
 
 import tensorflow as tf
 print("Tensorflow imported!")
 
+#######################################
+#NEURAL NETWORK
+INPUT_NO = 12
+OUTPUT_NO = len(class_names)
+HIDDEN_NO = 8
+
 #Data and labels
-data = tf.placeholder(tf.float32, [None, 12])
+data = tf.placeholder(tf.float32, [None, INPUT_NO])
 labels = tf.placeholder(tf.int32, [None])
 
 #Weights
-W = tf.Variable(tf.zeros([12, 5]))
+W1 = tf.Variable(tf.random_uniform([INPUT_NO, HIDDEN_NO], -xavier(INPUT_NO), xavier(INPUT_NO)))
+W2 = tf.Variable(tf.random_uniform([HIDDEN_NO, OUTPUT_NO], -xavier(HIDDEN_NO), xavier(HIDDEN_NO)))
 
-#Bias
-b = tf.Variable(tf.zeros([5]))
+#Biases
+b1 = tf.Variable(tf.zeros([HIDDEN_NO]))
+b2 = tf.Variable(tf.zeros([OUTPUT_NO]))
 
 #Output
-output = tf.matmul(data, W) + b
-output_softmax = tf.nn.softmax(output)
+hidden = tf.matmul(data, W1) + b1
+output = tf.matmul(hidden, W2) + b2
 y = tf.nn.sparse_softmax_cross_entropy_with_logits(output, labels)
 
-train_step = tf.train.AdamOptimizer(0.005).minimize(tf.reduce_mean(y))
+#Training
+train_step = tf.train.AdamOptimizer(0.01).minimize(tf.reduce_mean(y))
 
-init = tf.global_variables_initializer()
-
-sess = tf.Session()
-sess.run(init)
-
-
-#TRAINING
-batch_no = 2000
-batch_size = 3000
-for i in range(batch_no):
-    batch_ids = random.sample(range(0, len(content)), batch_size)
-    batch_data = [content[j] for j in batch_ids]
-    batch_labels = [label[j] for j in batch_ids]
-
-    sess.run(train_step, feed_dict={data: batch_data, labels: batch_labels})
-print("Network trained!")
-
-
-#TESTING
+#Testing
 correct = tf.equal(labels, tf.cast(tf.arg_max(output, 1), tf.int32))
 accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
-batch_no = 1000;
-batch_size = 1000;
-batch_labels_nonsparse = []
-conf_mat = [[0 for j in class_names] for i in class_names]
-for i in range(batch_no):
-    #testing
-    batch_ids = random.sample(range(0, len(content)), batch_size)
-    batch_data = [content[j] for j in batch_ids]
-    batch_labels = [label[j] for j in batch_ids]
 
-    print(sess.run(accuracy, feed_dict={data: batch_data, labels: batch_labels}))
-    output_list = list(sess.run(tf.argmax(output, 1), feed_dict={data: batch_data, labels: batch_labels}))
+#Initializing
+init = tf.global_variables_initializer()
+#########################################
 
-    #calculating confusion matrix
-    for (j, corr_lab) in enumerate(batch_labels):
-        conf_mat[corr_lab][output_list[j]] += 1
+###########
+#VALIDATION
 
-print(conf_mat)
+if(VALIDATION_METHOD == 1):
+    
+    ###############
+    #Random Batches
+    sess = tf.Session()
+    sess.run(init)
+
+    #TRAINING
+    batch_no = 1000
+    batch_size = 1000
+    for i in range(batch_no):
+        batch_ids = random.sample(range(0, len(content)), batch_size)
+        batch_data = [content[j] for j in batch_ids]
+        batch_labels = [label[j] for j in batch_ids]
+
+        sess.run(train_step, feed_dict={data: batch_data, labels: batch_labels})
+    print("Network trained!")
+    print(W1.eval(sess))
+    print(W2.eval(sess))
+
+    #TESTING
+    batch_no = 100;
+    batch_size = 1000;
+    batch_labels_nonsparse = []
+    conf_mat = [[0 for j in class_names] for i in class_names]
+    for i in range(batch_no):
+        #testing
+        batch_ids = random.sample(range(0, len(content)), batch_size)
+        batch_data = [content[j] for j in batch_ids]
+        batch_labels = [label[j] for j in batch_ids]
+
+        print(sess.run(accuracy, feed_dict={data: batch_data, labels: batch_labels}))
+        output_list = list(sess.run(tf.argmax(output, 1), feed_dict={data: batch_data, labels: batch_labels}))
+
+        #calculating confusion matrix
+        for (j, corr_lab) in enumerate(batch_labels):
+            conf_mat[corr_lab][output_list[j]] += 1
+
+    print(conf_mat)
+
+elif(VALIDATION_METHOD == 2):
+
+    #################
+    #Cross Validation
+
+    FOLD_NO = 10
+    TRAINING_REPEATS = 20
+
+    sess = tf.Session()
+
+    for i in range(FOLD_NO):
+
+        print ("Fold {}: ".format(i))
+
+        sess.run(init)
+
+        temp_class_count = [0 for i in class_names]
+
+        index_min = [(1.0/FOLD_NO) * i * count for count in class_count]
+        index_max = [(1.0/FOLD_NO) * (i+1) * count for count in class_count]
+
+        testing_ids = []
+        training_ids = []
+
+        for j, l in enumerate(label):
+
+            if temp_class_count[l] >= index_min[l] and temp_class_count[l] < index_max[l]:
+                testing_ids.append(j)
+            else:
+                training_ids.append(j)
+
+            temp_class_count[l] += 1
+
+                        
+        #Training
+        print("Training...")
+        for j in range(TRAINING_REPEATS):
+            random.shuffle(training_ids)
+            training_data = [content[j] for j in training_ids]
+            training_labels = [label[j] for j in training_ids]
+
+            sess.run(train_step, feed_dict={data: training_data, labels: training_labels})
+        print("Training finished!")
+        #####
+
+        #Testing
+        print("Testing...")
+        testing_data = [content[j] for j in testing_ids]
+        testing_labels = [label[j] for j in testing_ids]
+        conf_mat = [[0 for j in class_names] for i in class_names]
+
+        print("Accuracy: ")
+        print(sess.run(accuracy, feed_dict={data: testing_data, labels: testing_labels}))
+
+        #calculating confusion matrix
+        output_list = list(sess.run(tf.argmax(output, 1), feed_dict={data: testing_data, labels: testing_labels}))
+        for (j, corr_lab) in enumerate(testing_labels):
+            conf_mat[corr_lab][output_list[j]] += 1
+        print(conf_mat)
+        #####
+
+
+
+
 
     
 
