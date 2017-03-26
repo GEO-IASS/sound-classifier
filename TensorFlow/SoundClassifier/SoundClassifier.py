@@ -2,6 +2,8 @@
 import csv
 import random
 import math
+import sys
+import string
 
 def xavier(x):
     return math.sqrt(2.0/x)
@@ -27,14 +29,52 @@ for n in class_names:
 content = []
 label = []
 class_count = [0 for i in class_names]
+#Event is saving name and positions in the content and labels lists
+class Event:
+    def __init__(self, name, begin, end):
+        self.name = name
+        self.begin = begin
+        self.end = end
+    def print(self):
+        print(self.name)
+        print(self.begin, ' - ', self.end)
+events = []
+#File is saving name and positions in the events list
+class File:
+    files = dict()
+
+    def __init__(self, name, begin, end):
+        self.name = name
+        self.begin = begin
+        self.end = end
+        File.files[self.name] = self
+
+    def print(self):
+        print(self.name)
+        print(self.begin, ' - ', self.end)
+
 for i, f in enumerate(files):
     file = open(f)
     reader = csv.reader(file)
     for line in reader:
-        line.pop()
-        content.append(line)
-        label.append(i)
-        class_count[i] += 1
+        #line contains filename
+        if len(line) == 1:
+            fname = line[0]
+            if len(events) > 0:
+                events[-1].end = len(content) - 1
+            events.append(Event(fname, len(content), len(content) + 1))
+            #trimming to file name
+            fname = fname.partition('#')[0]
+            if fname in File.files:
+                File.files[fname].end = len(events) - 1
+            else:
+                File(fname, len(events) - 1, len(events) - 1)
+        #line contains data
+        else:
+            line.pop()
+            content.append(line)
+            label.append(i)
+            class_count[i] += 1
 print("Data processed!")
 ########################
 
