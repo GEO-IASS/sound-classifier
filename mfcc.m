@@ -150,13 +150,13 @@ if inEvent
 end
 
 %constructing output
-X = cell(length(onsetVector));
+X = cell([length(onsetVector), 1]);
 
 for i = 1:length(onsetVector)
     b = onsetVector(i);
     e = offsetVector(i);
     
-    X{i} = mfccArray(mfccRange, b:e);
+    X{i} = mfccArray(mfccRange, b:e-1);
 end
 
 plot(spectralFlux);
