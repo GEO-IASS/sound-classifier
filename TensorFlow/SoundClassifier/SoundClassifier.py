@@ -65,6 +65,7 @@ for i, f in enumerate(files):
             events.append(Event(fname, len(content), len(content) + 1))
             #trimming to file name
             fname = fname.partition('#')[0]
+            fname.pop()
             if fname in File.files:
                 File.files[fname].end = len(events) - 1
             else:
@@ -118,6 +119,30 @@ init = tf.global_variables_initializer()
 ###########
 #VALIDATION
 
+def trainRange(session, begin, end, flag = 0):
+    ######
+    #flags
+    #0 - single examples
+    #1 - events
+    #2 - files
+    if flag == 0:
+        train_ids = range(begin, end)
+        train(session, train_ids)
+    elif flag == 1:
+        for e in events[begin:end]:
+            trainRange(session, e.begin, e.end, 0)
+    elif flag == 2:
+        for f in files[begin:end]:
+            trainRange(session, File.files[f].begin, File.files[f].end, 1)
+
+def train(session, train_ids):
+    random.shuffle(train_ids)
+    train_data = [content[i] for i in train_ids]
+    train_labels = [label[i] for i in train_ids]
+    session.run(train_step, feed_dict={data: train_data, labels: train_labels})
+
+
+
 if(VALIDATION_METHOD == 1):
     
     ###############
@@ -162,7 +187,6 @@ elif(VALIDATION_METHOD == 2):
 
     #################
     #Cross Validation
-
     FOLD_NO = 10
     TRAINING_REPEATS = 20
 
@@ -218,6 +242,13 @@ elif(VALIDATION_METHOD == 2):
             conf_mat[corr_lab][output_list[j]] += 1
         print(conf_mat)
         #####
+
+elif(VALIDATION_METHOD == 3):
+
+    #####################
+    #File-by file testing
+
+
 
 
 
